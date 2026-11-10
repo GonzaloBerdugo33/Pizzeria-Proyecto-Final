@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Pizzeria.API.DTOs;
 using Pizzeria.API.Servicios;
 
-namespace MiApiTP.Controllers
+namespace Pizzeria.API.Controllers
 {
     [ApiController]
     [Authorize]
