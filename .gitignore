@@ -1,0 +1,10 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+Logs/
+logs/
+*.pubxml
+*.pubxml.user
+appsettings.Production.json
