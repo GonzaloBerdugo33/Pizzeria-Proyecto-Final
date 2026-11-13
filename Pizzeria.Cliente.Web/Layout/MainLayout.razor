@@ -1,0 +1,69 @@
+﻿@inherits LayoutComponentBase
+@using Pizzeria.Cliente.Web.Servicios
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+
+<MudThemeProvider Theme="_tema" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="2">
+        <MudText Typo="Typo.h6">Pizzería · Caja</MudText>
+
+        <AuthorizeView Roles="Cajero,Administrador">
+            <MudButton Href="/" Color="Color.Inherit" Class="ml-4">Caja</MudButton>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Administrador">
+            <MudButton Href="/Productos" Color="Color.Inherit">Productos</MudButton>
+            <MudButton Href="/Categoria" Color="Color.Inherit">Categorías</MudButton>
+            <MudButton Href="/Proveedores" Color="Color.Inherit">Proveedores</MudButton>
+            <MudButton Href="/Usuarios" Color="Color.Inherit">Usuarios</MudButton>
+        </AuthorizeView>
+
+        <MudSpacer />
+
+        <AuthorizeView>
+            <Authorized>
+                <MudText Typo="Typo.body2" Class="mr-3">@NombreUsuario(context.User)</MudText>
+                <MudButton Color="Color.Inherit" Variant="Variant.Outlined" Size="Size.Small" OnClick="CerrarSesion">Salir</MudButton>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private readonly MudTheme _tema = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#0369a1",
+            Secondary = "#0f172a",
+            AppbarBackground = "#0f172a"
+        }
+    };
+
+    // Muestra el email si el token lo trae; si no, el rol
+    private static string NombreUsuario(System.Security.Claims.ClaimsPrincipal usuario)
+    {
+        var claim = usuario.Claims.FirstOrDefault(c =>
+            c.Type == "email" ||
+            c.Type == System.Security.Claims.ClaimTypes.Email ||
+            c.Type == System.Security.Claims.ClaimTypes.Name);
+
+        return claim?.Value ?? usuario.Claims
+            .FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? "Usuario";
+    }
+
+    private async Task CerrarSesion()
+    {
+        await AuthService.LogoutAsync();
+        Nav.NavigateTo("/login");
+    }
+}

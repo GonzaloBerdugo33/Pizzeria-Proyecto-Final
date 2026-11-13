@@ -1,0 +1,84 @@
+﻿@page "/login"
+@attribute [AllowAnonymous]
+@using Pizzeria.Cliente.Web.DTOs
+@using Pizzeria.Cliente.Web.Servicios
+@inject IAuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-12">
+    <MudCard Elevation="4">
+        <EditForm Model="@login" OnValidSubmit="Ingresar">
+            <MudCardContent>
+                <MudText Typo="Typo.h5" Class="mb-1">Iniciar sesión</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Acceso para cajero y administrador</MudText>
+
+                <MudTextField @bind-Value="login.Email" Label="Correo electrónico"
+                              Variant="Variant.Outlined" InputType="InputType.Email" Class="mb-3" />
+
+                <MudTextField @bind-Value="login.Password" Label="Contraseña"
+                              Variant="Variant.Outlined" InputType="InputType.Password" />
+
+                @if (error is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+                }
+            </MudCardContent>
+            <MudCardActions Class="pa-4">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                           FullWidth="true" Size="Size.Large" Disabled="@ingresando">
+                    @(ingresando ? "Ingresando..." : "Ingresar")
+                </MudButton>
+            </MudCardActions>
+        </EditForm>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private LoginDTO login = new();
+    private string? error;
+    private bool ingresando;
+
+    private async Task Ingresar()
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(login.Email) || string.IsNullOrWhiteSpace(login.Password))
+        {
+            error = "Completá el correo y la contraseña.";
+            return;
+        }
+
+        ingresando = true;
+        try
+        {
+            var ok = await AuthService.LoginAsync(login);
+            if (!ok)
+            {
+                error = "Credenciales inválidas.";
+                return;
+            }
+
+            // Esta web es solo para el personal: un cliente no debe quedarse adentro
+            var estado = await AuthStateProvider.GetAuthenticationStateAsync();
+            var usuario = estado.User;
+            if (!usuario.IsInRole("Cajero") && !usuario.IsInRole("Administrador"))
+            {
+                await AuthService.LogoutAsync();
+                error = "Esta web es para cajero y administrador. Los clientes usan la app.";
+                return;
+            }
+
+            Nav.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            error = $"No se pudo conectar con el servidor: {ex.Message}";
+        }
+        finally
+        {
+            ingresando = false;
+        }
+    }
+}

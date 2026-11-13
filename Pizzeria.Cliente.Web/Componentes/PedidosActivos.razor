@@ -1,0 +1,301 @@
+﻿@implements IDisposable
+@using System.Net.Http.Json
+@using Pizzeria.Cliente.Web.DTOs
+@using Pizzeria.Cliente.Web.Servicios
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<div class="d-flex justify-space-between align-baseline mb-2">
+    <MudText Typo="Typo.h6">Pedidos activos</MudText>
+    <MudText Typo="Typo.caption" Color="Color.Secondary">Se actualiza cada 5 s</MudText>
+</div>
+
+<MudSwitch T="bool" Value="incluirFinalizados" ValueChanged="CambiarFinalizados"
+           Label="Incluir entregados y cancelados" Color="Color.Primary" Class="mb-2" />
+
+<div class="d-flex flex-wrap mb-3" style="gap:6px">
+    <MudButton Size="Size.Small" Color="Color.Secondary"
+               Variant="@(filtro == 0 ? Variant.Filled : Variant.Outlined)"
+               OnClick="() => filtro = 0">Todos · @Lista.Count</MudButton>
+    @foreach (var e in estadosFiltro)
+    {
+        <MudButton Size="Size.Small" Color="Color.Secondary"
+                   Variant="@(filtro == e.Id ? Variant.Filled : Variant.Outlined)"
+                   OnClick="() => filtro = e.Id">@e.Nombre · @Lista.Count(p => p.EstadoId == e.Id)</MudButton>
+    }
+</div>
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error">@error</MudAlert>
+}
+else if (pedidos is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (!Visibles.Any())
+{
+    <MudText Color="Color.Secondary">No hay pedidos para mostrar.</MudText>
+}
+else
+{
+    @foreach (var p in Visibles)
+    {
+        <MudPaper Class="pa-3 mb-3" Elevation="1">
+            <div class="d-flex justify-space-between align-center">
+                <MudText Typo="Typo.subtitle1"><b>Pedido N° @p.Id</b></MudText>
+                <MudChip T="string" Size="Size.Small" Color="@ColorEstado(p.EstadoId)">@p.Estado</MudChip>
+            </div>
+
+            <MudText Typo="Typo.body2" Class="mt-1">
+                <b>@p.ClienteNombre</b> · @Origen(p) · @p.TipoEntregaTexto · @Hace(p.Fecha)
+            </MudText>
+            @if (!string.IsNullOrEmpty(p.Direccion))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@p.Direccion</MudText>
+            }
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">@Resumen(p)</MudText>
+
+            <div class="d-flex justify-space-between align-center mt-2">
+                <MudText Typo="Typo.h6">@Formato.Dinero(p.Total)</MudText>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                         Color="@(p.Pagado ? Color.Success : Color.Error)">@TextoPago(p)</MudChip>
+            </div>
+
+            @* Solo el cajero opera; el administrador solo mira *@
+            <AuthorizeView Roles="Cajero">
+                @if (PideCodigo(p))
+                {
+                    <MudTextField T="string" Class="mt-2" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Label="Código de entrega (te lo pasa el repartidor)" MaxLength="4" Immediate="true"
+                                  Value="@ObtenerCodigo(p.Id)"
+                                  ValueChanged="@((string v) => codigos[p.Id] = v)" />
+                }
+
+                @if (EntregaBloqueada(p))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Falta confirmar el pago para poder entregar.
+                    </MudAlert>
+                }
+
+                <div class="d-flex flex-wrap mt-2" style="gap:6px">
+                    @if (PuedeConfirmarPago(p))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                                   Disabled="@ocupados.Contains(p.Id)"
+                                   OnClick="() => ConfirmarPago(p)">Confirmar pago</MudButton>
+                    }
+                    @if (PuedeAvanzar(p))
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Style="flex:1 1 0"
+                                   Disabled="@(ocupados.Contains(p.Id) || EntregaBloqueada(p))"
+                                   OnClick="() => Avanzar(p)">@TextoAvanzar(p)</MudButton>
+                    }
+                    @if (PuedeCancelar(p))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                   Disabled="@ocupados.Contains(p.Id)"
+                                   OnClick="() => Cancelar(p)">Cancelar</MudButton>
+                    }
+                </div>
+            </AuthorizeView>
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<PedidoDTO>? pedidos;
+    private string? error;
+    private int filtro;                                   // 0 = todos
+    private bool incluirFinalizados;
+    private readonly Dictionary<int, string> codigos = new();   // código tipeado por pedido
+    private readonly HashSet<int> ocupados = new();             // pedidos con una acción en curso
+    private readonly CancellationTokenSource _cts = new();
+
+    private readonly (int Id, string Nombre)[] estadosFiltro =
+    {
+        (1, "Recibido"), (2, "En horno"), (3, "En camino"), (4, "Listo")
+    };
+
+    private List<PedidoDTO> Lista => pedidos ?? new();
+    private IEnumerable<PedidoDTO> Visibles => filtro == 0 ? Lista : Lista.Where(p => p.EstadoId == filtro);
+
+    // ---------- Carga y actualización automática ----------
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        _ = Sondear(_cts.Token);
+    }
+
+    private async Task Sondear(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await Cargar();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            var url = $"api/Pedido/panel?incluirFinalizados={(incluirFinalizados ? "true" : "false")}";
+            pedidos = await Http.GetFromJsonAsync<List<PedidoDTO>>(url) ?? new();
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            // Un corte momentáneo no borra lo que ya se estaba mostrando
+            if (pedidos is null) error = $"No se pudieron cargar los pedidos: {ex.Message}";
+        }
+    }
+
+    private async Task CambiarFinalizados(bool valor)
+    {
+        incluirFinalizados = valor;
+        await Cargar();
+    }
+
+    // ---------- Acciones ----------
+    private async Task Avanzar(PedidoDTO p)
+    {
+        ocupados.Add(p.Id);
+        try
+        {
+            var cuerpo = new AvanzarPedidoDTO { CodigoEntrega = PideCodigo(p) ? ObtenerCodigo(p.Id) : null };
+            var r = await Http.PostAsJsonAsync($"api/Pedido/{p.Id}/avanzar", cuerpo);
+
+            if (r.IsSuccessStatusCode)
+            {
+                codigos.Remove(p.Id);
+                Snackbar.Add($"Pedido N° {p.Id} actualizado.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(await r.Content.ReadAsStringAsync(), Severity.Error);
+            }
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error de conexión: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            ocupados.Remove(p.Id);
+        }
+    }
+
+    private async Task Cancelar(PedidoDTO p)
+    {
+        var confirmar = await Dialogs.ShowMessageBoxAsync(
+            "Cancelar pedido",
+            $"¿Cancelar el pedido N° {p.Id}? El stock vuelve al inventario.",
+            yesText: "Sí, cancelar", cancelText: "No");
+        if (confirmar != true) return;
+
+        ocupados.Add(p.Id);
+        try
+        {
+            var r = await Http.PostAsync($"api/Pedido/{p.Id}/cancelar", null);
+            if (r.IsSuccessStatusCode)
+                Snackbar.Add($"Pedido N° {p.Id} cancelado.", Severity.Success);
+            else
+                Snackbar.Add(await r.Content.ReadAsStringAsync(), Severity.Error);
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error de conexión: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            ocupados.Remove(p.Id);
+        }
+    }
+
+    private async Task ConfirmarPago(PedidoDTO p)
+    {
+        ocupados.Add(p.Id);
+        try
+        {
+            var r = await Http.PostAsync($"api/Pedido/{p.Id}/confirmar-pago", null);
+            if (r.IsSuccessStatusCode)
+                Snackbar.Add($"Pago del pedido N° {p.Id} confirmado.", Severity.Success);
+            else
+                Snackbar.Add(await r.Content.ReadAsStringAsync(), Severity.Error);
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error de conexión: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            ocupados.Remove(p.Id);
+        }
+    }
+
+    // ---------- Reglas de la pantalla (la API vuelve a validar todo) ----------
+    private static bool PuedeAvanzar(PedidoDTO p) => p.EstadoId is >= 1 and <= 4;
+    private static bool PuedeCancelar(PedidoDTO p) => p.EstadoId is >= 1 and <= 4;
+
+    // Los envíos hechos desde la app (sin cajero) piden el código al entregar
+    private static bool PideCodigo(PedidoDTO p) =>
+        p.EstadoId == 3 && p.TipoEntrega == 2 && string.IsNullOrEmpty(p.CajeroEmail);
+
+    // No se entrega un pedido impago, salvo que sea en efectivo
+    private static bool EntregaBloqueada(PedidoDTO p) =>
+        p.EstadoId is 3 or 4 && !p.Pagado && p.MetodoPagoId != 1;
+
+    private static bool PuedeConfirmarPago(PedidoDTO p) =>
+        !p.Pagado && p.MetodoPagoId != 1 && p.EstadoId != 6;
+
+    private static string TextoAvanzar(PedidoDTO p) => p.EstadoId switch
+    {
+        1 => "Pasar a En horno",
+        2 => p.TipoEntrega == 2 ? "Pasar a En camino" : "Pasar a Listo para retirar",
+        _ => "Marcar entregado"
+    };
+
+    // ---------- Textos y colores ----------
+    private string ObtenerCodigo(int id) => codigos.TryGetValue(id, out var c) ? c : "";
+
+    private static string Origen(PedidoDTO p) => string.IsNullOrEmpty(p.CajeroEmail) ? "App" : "Caja";
+
+    private static string Resumen(PedidoDTO p) =>
+        string.Join(" · ", p.Detalles.Select(d => $"{d.Cantidad}× {d.NombreProducto}"));
+
+    private static string TextoPago(PedidoDTO p) =>
+        p.MetodoPagoId == 1
+            ? (p.Pagado ? "Efectivo · cobrado" : "Efectivo · al cobrar")
+            : (p.Pagado ? $"Pagado · {p.MetodoPago}" : $"Pendiente · {p.MetodoPago}");
+
+    private static string Hace(DateTime fecha)
+    {
+        var min = (int)(DateTime.UtcNow - fecha.ToUniversalTime()).TotalMinutes;
+        return min < 1 ? "recién" : min < 60 ? $"hace {min} min" : $"hace {min / 60} h";
+    }
+
+    private static Color ColorEstado(int estadoId) => estadoId switch
+    {
+        3 => Color.Info,
+        4 or 5 => Color.Success,
+        6 => Color.Default,
+        _ => Color.Warning
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

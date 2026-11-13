@@ -1,0 +1,141 @@
+﻿@page "/Register"
+@using Pizzeria.Cliente.Web.DTOs
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
+    <MudCard Elevation="4" Class="pa-4">
+        <MudCardContent>
+            <div class="text-center mb-4">
+                <MudText Typo="Typo.h4" Align="MudBlazor.Align.Center" GutterBottom="true">Crear Usuario</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Completa los datos del nuevo Usuario</MudText>
+            </div>
+
+            @if (!string.IsNullOrEmpty(mensajeError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4" Variant="Variant.Filled">
+                    @mensajeError
+                </MudAlert>
+            }
+
+            <EditForm Model="@dto" OnValidSubmit="ManejarRegistro">
+                <DataAnnotationsValidator />
+
+                <MudTextField @bind-Value="dto.Nombre"
+                              Label="Nombre"
+                              Variant="Variant.Outlined"
+                              Class="mb-3"
+                              For="@(() => dto.Nombre)"
+                              Required="true" />
+
+                <MudTextField @bind-Value="dto.Email"
+                              Label="Correo electrónico"
+                              Variant="Variant.Outlined"
+                              Class="mb-3"
+                              For="@(() => dto.Email)"
+                              InputType="InputType.Email"
+                              Required="true" />
+
+                <MudTextField @bind-Value="dto.Password"
+                              Label="Contraseña"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              For="@(() => dto.Password)"
+                              InputType="InputType.Password"
+                              Required="true" />
+
+               <MudSelect T="string"
+                           @bind-Value="dto.Rol"
+                           Label="Rol"
+                           Placeholder="Seleccione un rol"
+                           Variant="Variant.Outlined"
+                           Class="mb-4"
+                           Required="true">
+
+                     <MudSelectItem T="string" Value="@("Administrador")">
+                              Administrador
+                    </MudSelectItem>
+
+                    <MudSelectItem T="string" Value="@("Cajero")">
+                              Cajero
+                    </MudSelectItem>
+
+               </MudSelect>
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Size="Size.Large"
+                           Disabled="@cargando">
+                    @if (cargando)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <span class="ms-2">Registrando...</span>
+                    }
+                    else
+                    {
+                        <span>Registrarse</span>
+                    }
+                </MudButton>
+            </EditForm>
+
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    
+    private CrearUsuarioDTO dto = new()
+    {
+        Nombre = string.Empty,
+        Email = string.Empty,
+        Password = string.Empty,
+        Rol = string.Empty
+    };
+
+    private string? mensajeError;
+    private bool cargando = false;
+
+    private async Task ManejarRegistro()
+    {
+        mensajeError = null;
+        cargando = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Usuario/Register", dto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Usuario creado con éxito", Severity.Success);
+
+                dto = new()
+                {
+                    Nombre = string.Empty,
+                    Email = string.Empty,
+                    Password = string.Empty,
+                    Rol = string.Empty
+                };
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                mensajeError = string.IsNullOrEmpty(errorContent)
+                    ? "Ocurrió un error al registrar el usuario."
+                    : errorContent;
+            }
+        }
+        catch (Exception)
+        {
+            mensajeError = "No se pudo conectar con el servidor.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

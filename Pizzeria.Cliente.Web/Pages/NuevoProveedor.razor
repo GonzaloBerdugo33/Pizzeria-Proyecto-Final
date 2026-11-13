@@ -1,0 +1,106 @@
+﻿@page "/Proveedores/Nuevo"
+@using Pizzeria.Cliente.Web.DTOs
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+    <MudCard Elevation="4" Class="pa-6">
+        <MudText Typo="Typo.h5" Class="mb-4">🏢 Registrar Nuevo Proveedor</MudText>
+
+        <EditForm Model="@nuevoProveedor" OnValidSubmit="GuardarProveedor">
+            <DataAnnotationsValidator />
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="nuevoProveedor.RazonSocial"
+                                  Label="Razón Social / Nombre de la Empresa"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => nuevoProveedor.RazonSocial)"
+                                  Required="true" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="nuevoProveedor.CUIT"
+                                  Label="CUIT (Identificación Fiscal)"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => nuevoProveedor.CUIT)"
+                                  Required="true" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="nuevoProveedor.Telefono"
+                                  Label="Número de Teléfono"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => nuevoProveedor.Telefono)" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="nuevoProveedor.Email"
+                                  Label="Correo Electrónico"
+                                  Variant="Variant.Outlined"
+                                  InputType="InputType.Email"
+                                  For="@(() => nuevoProveedor.Email)" />
+                </MudItem>
+            </MudGrid>
+
+            <div class="d-flex justify-between mt-6">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Volver">
+                    Cancelar
+                </MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@guardando">
+                    @if (guardando)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <span>Guardar Proveedor</span>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private CrearProveedorDTO nuevoProveedor = new();
+    private bool guardando = false;
+
+    private async Task GuardarProveedor()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoProveedor.RazonSocial) || string.IsNullOrWhiteSpace(nuevoProveedor.CUIT))
+        {
+            Snackbar.Add("La Razón Social y el CUIT son obligatorios.", Severity.Warning);
+            return;
+        }
+
+        guardando = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Proveedor", nuevoProveedor);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("¡Proveedor registrado con éxito!", Severity.Success);
+                Navigation.NavigateTo("/Proveedores");
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Error: {error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error de conexión: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private void Volver() => Navigation.NavigateTo("/Proveedores");
+}

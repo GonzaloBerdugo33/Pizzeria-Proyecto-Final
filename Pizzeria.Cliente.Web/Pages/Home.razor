@@ -1,0 +1,44 @@
+﻿@page "/"
+@attribute [Authorize(Roles = "Cajero,Administrador")]
+@using Pizzeria.Cliente.Web.Componentes
+@using Pizzeria.Cliente.Web.DTOs
+@using Pizzeria.Cliente.Web.Servicios
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="4">
+        <PedidosActivos />
+    </MudItem>
+
+    @* El cajero opera; el administrador solo supervisa los pedidos *@
+    <AuthorizeView Roles="Cajero">
+        <Authorized>
+            <MudItem xs="12" md="4">
+                <ProductosCaja @ref="productos" OnAgregar="Agregar" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <VentaActual Carrito="carrito" OnVentaRegistrada="VentaRegistrada" />
+            </MudItem>
+        </Authorized>
+        <NotAuthorized>
+            <MudItem xs="12" md="8">
+                <MudAlert Severity="Severity.Info">
+                    El administrador supervisa los pedidos. Las ventas las registra el cajero.
+                </MudAlert>
+            </MudItem>
+        </NotAuthorized>
+    </AuthorizeView>
+</MudGrid>
+
+@code {
+    // El carrito de la venta vive acá: lo comparten la lista de productos y la venta actual
+    private readonly CarritoVenta carrito = new();
+    private ProductosCaja? productos;
+
+    private void Agregar(ProductoDTO producto) => carrito.Agregar(producto);
+
+    // Después de una venta se recarga la lista para ver el stock nuevo
+    private async Task VentaRegistrada()
+    {
+        if (productos is not null) await productos.Recargar();
+    }
+}

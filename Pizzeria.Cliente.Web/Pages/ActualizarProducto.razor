@@ -1,0 +1,149 @@
+﻿@page "/Productos/Actualizar/{Id:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Pizzeria.Cliente.Web.DTOs
+@attribute [Authorize(Roles = "Administrador")]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h4" Class="mb-4">Editar Producto</MudText>
+
+@if (cargando)
+{
+    <p><em>Cargando producto...</em></p>
+}
+else if (productoDto == null)
+{
+    <MudText Color="Color.Error">No se encontró el producto.</MudText>
+}
+else
+{
+    <MudTextField Label="Nombre del Producto" @bind-Value="productoDto.Nombre" Variant="Variant.Outlined" Class="mb-3" />
+    <MudTextField Label="Descripción" @bind-Value="productoDto.Descripcion" Variant="Variant.Outlined" Class="mb-3" />
+    <MudNumericField T="decimal" Label="Precio" @bind-Value="productoDto.Precio" Min="0" Variant="Variant.Outlined" Class="mb-3" />
+
+    <MudSelect T="int" Label="Categoría" @bind-Value="productoDto.CategoriaId" Variant="Variant.Outlined" Class="mb-3" AnchorOrigin="Origin.BottomCenter">
+        @if (categorias != null)
+        {
+            @foreach (var cat in categorias)
+            {
+                <MudSelectItem Value="@cat.Id">@cat.Nombre</MudSelectItem>
+            }
+        }
+    </MudSelect>
+
+    <MudSelect T="int" Label="Proveedor" @bind-Value="productoDto.ProveedorId" Variant="Variant.Outlined" Class="mb-3" AnchorOrigin="Origin.BottomCenter">
+        @if (proveedores != null)
+        {
+            @foreach (var prov in proveedores)
+            {
+                <MudSelectItem Value="@prov.Id">@prov.RazonSocial</MudSelectItem>
+            }
+        }
+    </MudSelect>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@guardando" OnClick="GuardarCambios">
+        @(guardando ? "Guardando..." : "Guardar Cambios")
+    </MudButton>
+    <MudButton Variant="Variant.Text" Class="ms-2" OnClick="Cancelar">Cancelar</MudButton>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private CrearProductoDTO? productoDto;
+    private List<CategoriaProductoDTO>? categorias;
+    private List<ProveedorSelectDTO>? proveedores;
+    private bool cargando = true;
+    private bool guardando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            categorias = await Http.GetFromJsonAsync<List<CategoriaProductoDTO>>("api/CategoriaProducto");
+            proveedores = await Http.GetFromJsonAsync<List<ProveedorSelectDTO>>("api/Proveedor/Todos");
+
+            var actual = await Http.GetFromJsonAsync<ProductoDTO>($"api/Producto/{Id}");
+            if (actual != null)
+            {
+                // Se copian todos los datos. La imagen y el stock no se muestran,
+                // pero se mandan tal cual para que el PUT no los pise.
+                productoDto = new CrearProductoDTO
+                {
+                    Nombre = actual.Nombre,
+                    Precio = actual.Precio,
+                    Stock = actual.Stock,
+                    ImagenUrl = actual.ImagenUrl ?? string.Empty,
+                    CategoriaId = actual.CategoriaId,
+                    ProveedorId = actual.ProveedorId,
+                    Descripcion = actual.Descripcion ?? string.Empty,
+                    Activo = actual.Activo,
+                    Disponible = actual.Disponible,
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al cargar el producto: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task GuardarCambios()
+    {
+        if (productoDto == null) return;
+
+        if (string.IsNullOrWhiteSpace(productoDto.Nombre))
+        {
+            Snackbar.Add("El nombre es obligatorio.", Severity.Warning);
+            return;
+        }
+
+        if (productoDto.Precio <= 0)
+        {
+            Snackbar.Add("El precio debe ser mayor a cero.", Severity.Warning);
+            return;
+        }
+
+        if (productoDto.CategoriaId == 0 || productoDto.ProveedorId == 0)
+        {
+            Snackbar.Add("Seleccioná una categoría y un proveedor.", Severity.Warning);
+            return;
+        }
+
+        guardando = true;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/Producto/{Id}", productoDto);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Error al actualizar: {error}", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("Producto actualizado con éxito", Severity.Success);
+            Navigation.NavigateTo("/Productos-grid");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Excepción: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/Productos-grid");
+    }
+}

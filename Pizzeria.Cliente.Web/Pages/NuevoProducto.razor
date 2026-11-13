@@ -1,0 +1,162 @@
+﻿@page "/Productos/Nuevo"
+@using System.Net.Http.Headers
+@using Microsoft.AspNetCore.Authorization
+@using Pizzeria.Cliente.Web.DTOs
+@attribute [Authorize(Roles = "Administrador")]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h4" Class="mb-4">Nuevo Producto</MudText>
+
+<MudTextField Label="Nombre del Producto" @bind-Value="productoDto.Nombre" Variant="Variant.Outlined" Class="mb-3" />
+<MudTextField Label="Descripción" @bind-Value="productoDto.Descripcion" Variant="Variant.Outlined" Class="mb-3" />
+<MudNumericField T="decimal" Label="Precio" @bind-Value="productoDto.Precio" Min="0" Variant="Variant.Outlined" Class="mb-3" />
+<MudNumericField T="int" Label="Stock inicial" @bind-Value="productoDto.Stock" Min="0" Variant="Variant.Outlined" Class="mb-3" />
+
+<MudSelect T="int" Label="Categoría" @bind-Value="productoDto.CategoriaId" Variant="Variant.Outlined" Class="mb-3" AnchorOrigin="Origin.BottomCenter">
+    @if (categorias != null)
+    {
+        @foreach (var cat in categorias)
+        {
+            <MudSelectItem Value="@cat.Id">@cat.Nombre</MudSelectItem>
+        }
+    }
+</MudSelect>
+
+<MudSelect T="int" Label="Proveedor" @bind-Value="productoDto.ProveedorId" Variant="Variant.Outlined" Class="mb-3" AnchorOrigin="Origin.BottomCenter">
+    @if (proveedores != null)
+    {
+        @foreach (var prov in proveedores)
+        {
+            <MudSelectItem Value="@prov.Id">@prov.RazonSocial</MudSelectItem>
+        }
+    }
+</MudSelect>
+
+<!-- Input para la Imagen -->
+<div class="mb-4">
+    <MudText Typo="Typo.subtitle1" Class="mb-1">Imagen del Producto (PNG, JPG - máx. 2 MB)</MudText>
+    <InputFile OnChange="CargarArchivo" accept=".png,.jpg,.jpeg" />
+    @if (archivoSeleccionado != null)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Success" Class="mt-1">Archivo seleccionado: @archivoSeleccionado.Name</MudText>
+    }
+</div>
+
+<MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@guardando" OnClick="GuardarProducto">
+    @(guardando ? "Guardando..." : "Guardar Producto")
+</MudButton>
+
+@code {
+    private const long MaxImagen = 2 * 1024 * 1024;
+    private CrearProductoDTO productoDto = new();
+    private List<CategoriaProductoDTO>? categorias;
+    private List<ProveedorSelectDTO>? proveedores;
+    private IBrowserFile? archivoSeleccionado;
+    private bool guardando = false;
+
+    private record ProductoCreado(int Id);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            categorias = await Http.GetFromJsonAsync<List<CategoriaProductoDTO>>("api/CategoriaProducto");
+            proveedores = await Http.GetFromJsonAsync<List<ProveedorSelectDTO>>("api/Proveedor?pagina=1&tamanoPagina=1000");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al cargar categorías y proveedores: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CargarArchivo(InputFileChangeEventArgs e)
+    {
+        if (e.File.Size > MaxImagen)
+        {
+            Snackbar.Add("La imagen no puede superar los 2 MB.", Severity.Warning);
+            archivoSeleccionado = null;
+            return;
+        }
+
+        archivoSeleccionado = e.File;
+    }
+
+    private async Task GuardarProducto()
+    {
+        if (string.IsNullOrWhiteSpace(productoDto.Nombre))
+        {
+            Snackbar.Add("El nombre es obligatorio.", Severity.Warning);
+            return;
+        }
+
+        if (productoDto.Precio <= 0)
+        {
+            Snackbar.Add("El precio debe ser mayor a cero.", Severity.Warning);
+            return;
+        }
+
+        if (productoDto.Stock < 0)
+        {
+            Snackbar.Add("El stock no puede ser negativo.", Severity.Warning);
+            return;
+        }
+
+        if (productoDto.CategoriaId == 0 || productoDto.ProveedorId == 0)
+        {
+            Snackbar.Add("Seleccioná una categoría y un proveedor.", Severity.Warning);
+            return;
+        }
+
+        guardando = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Producto", productoDto);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Error al crear producto: {error}", Severity.Error);
+                return;
+            }
+
+            var creado = await response.Content.ReadFromJsonAsync<ProductoCreado>();
+
+            if (archivoSeleccionado != null && creado != null)
+            {
+                using var content = new MultipartFormDataContent();
+
+                var stream = archivoSeleccionado.OpenReadStream(MaxImagen);
+                var archivoContent = new StreamContent(stream);
+                var tipo = string.IsNullOrEmpty(archivoSeleccionado.ContentType)
+                    ? "application/octet-stream"
+                    : archivoSeleccionado.ContentType;
+                archivoContent.Headers.ContentType = new MediaTypeHeaderValue(tipo);
+
+                content.Add(archivoContent, "archivo", archivoSeleccionado.Name);
+
+                var imgResponse = await Http.PostAsync($"api/Producto/{creado.Id}/imagen", content);
+
+                if (!imgResponse.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("El producto se creó, pero no se pudo subir la imagen.", Severity.Warning);
+                    Navigation.NavigateTo("/Productos-grid");
+                    return;
+                }
+            }
+
+            Snackbar.Add("Producto creado con éxito", Severity.Success);
+            Navigation.NavigateTo("/Productos-grid");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Excepción: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+}

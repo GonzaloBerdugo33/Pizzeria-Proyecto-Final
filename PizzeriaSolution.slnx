@@ -1,3 +1,8 @@
 <Solution>
   <Project Path="Pizzeria.API/Pizzeria.API.csproj" />
+  <Project Path="Pizzeria.Cliente.Movil/Pizzeria.Cliente.Movil.csproj" Id="29a29e47-98dd-4813-98d3-cc6d839ee424">
+    <BuildDependency Project="Pizzeria.API/Pizzeria.API.csproj" />
+    <Deploy />
+  </Project>
+  <Project Path="Pizzeria.Cliente.Web/Pizzeria.Cliente.Web.csproj" Id="c06b34b1-3d12-43e2-990f-abeeaa664078" />
 </Solution>
