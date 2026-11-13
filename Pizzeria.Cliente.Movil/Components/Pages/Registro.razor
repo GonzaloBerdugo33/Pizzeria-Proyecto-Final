@@ -1,0 +1,75 @@
+﻿@page "/registro"
+@using System.Net.Http.Json
+@using Pizzeria.Cliente.Movil.DTOs
+@inject HttpClient Http
+
+<MudText Typo="Typo.h5" Class="mb-3">Crear cuenta</MudText>
+
+@if (registrado)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3">¡Cuenta creada! Ya podés iniciar sesión.</MudAlert>
+    <MudButton Href="/Login" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">Ir a iniciar sesión</MudButton>
+}
+else
+{
+    <MudTextField @bind-Value="datos.Nombre" Label="Nombre" Variant="Variant.Outlined" Class="mb-2" />
+    <MudTextField @bind-Value="datos.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" Class="mb-2" />
+    <MudTextField @bind-Value="datos.Password" Label="Contraseña (mínimo 6 caracteres)" InputType="InputType.Password"
+                  Variant="Variant.Outlined" Class="mb-2" />
+    <MudTextField @bind-Value="datos.Telefono" Label="Teléfono (solo números)" InputType="InputType.Telephone"
+                  Variant="Variant.Outlined" Class="mb-3" />
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mb-2"
+               Disabled="@guardando" OnClick="Registrar">
+        @(guardando ? "Creando cuenta..." : "Crear cuenta")
+    </MudButton>
+    <MudButton Href="/Login" Variant="Variant.Text" FullWidth="true">Ya tengo cuenta</MudButton>
+}
+
+@code {
+    private RegistroClienteDTO datos = new();
+    private string? error;
+    private bool guardando;
+    private bool registrado;
+
+    private async Task Registrar()
+    {
+        error = null;
+
+        // El teléfono identifica al cliente: se guarda solo con dígitos
+        datos.Telefono = new string((datos.Telefono ?? "").Where(char.IsDigit).ToArray());
+
+        if (string.IsNullOrWhiteSpace(datos.Nombre)) { error = "El nombre es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(datos.Email)) { error = "El email es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(datos.Password) || datos.Password.Length < 6)
+        {
+            error = "La contraseña debe tener al menos 6 caracteres.";
+            return;
+        }
+        if (datos.Telefono.Length == 0) { error = "El teléfono es obligatorio."; return; }
+
+        guardando = true;
+        try
+        {
+            var respuesta = await Http.PostAsJsonAsync("api/Tienda/registro", datos);
+
+            if (respuesta.IsSuccessStatusCode)
+                registrado = true;
+            else
+                error = await respuesta.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"No se pudo registrar: {ex.Message}";
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+}

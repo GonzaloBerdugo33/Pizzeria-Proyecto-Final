@@ -1,3 +1,87 @@
 ﻿@inherits LayoutComponentBase
+@implements IDisposable
+@using Pizzeria.Cliente.Movil.Servicios
+@inject IAuthService AuthService
+@inject NavigationManager Nav
 
-@Body
+<MudThemeProvider Theme="_tema" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="2" Color="Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="AbrirCerrarMenu" />
+        <MudText Typo="Typo.h6" Class="ml-2">Pizzería</MudText>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_menuAbierto" Elevation="3" Variant="DrawerVariant.Temporary">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.subtitle1" Color="Color.Primary"><b>Menú</b></MudText>
+        </MudDrawerHeader>
+        <MudNavMenu>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.LocalPizza">Menú</MudNavLink>
+
+            <AuthorizeView>
+                <NotAuthorized>
+                    <MudNavLink Href="/Login" Icon="@Icons.Material.Filled.Login">Iniciar sesión</MudNavLink>
+                    <MudNavLink Href="/registro" Icon="@Icons.Material.Filled.PersonAdd">Crear cuenta</MudNavLink>
+                </NotAuthorized>
+            </AuthorizeView>
+
+            <AuthorizeView Roles="Cliente">
+                <MudNavLink Href="/carrito" Icon="@Icons.Material.Filled.ShoppingCart">Carrito</MudNavLink>
+                <MudNavLink Href="/mis-pedidos" Icon="@Icons.Material.Filled.ReceiptLong">Mis pedidos</MudNavLink>
+            </AuthorizeView>
+
+            <AuthorizeView>
+                <Authorized>
+                    <MudNavLink OnClick="CerrarSesion" Icon="@Icons.Material.Filled.Logout">Cerrar sesión</MudNavLink>
+                </Authorized>
+            </AuthorizeView>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pa-3">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _menuAbierto;
+
+    private readonly MudTheme _tema = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#0284c7",
+            Secondary = "#0f172a",
+            AppbarBackground = "#0f172a"
+        }
+    };
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += AlCambiarDePantalla;
+    }
+
+    private void AlCambiarDePantalla(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _menuAbierto = false;
+        StateHasChanged();
+    }
+
+    private void AbrirCerrarMenu() => _menuAbierto = !_menuAbierto;
+
+    private async Task CerrarSesion()
+    {
+        await AuthService.LogoutAsync();
+        _menuAbierto = false;
+        Nav.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= AlCambiarDePantalla;
+    }
+}

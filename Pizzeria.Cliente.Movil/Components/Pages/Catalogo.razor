@@ -1,0 +1,137 @@
+﻿@page "/"
+@page "/catalogo"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using Pizzeria.Cliente.Movil.DTOs
+@using Pizzeria.Cliente.Movil.Servicios
+@inject HttpClient Http
+@inject CarritoService Carrito
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">Nuestro menú</MudText>
+
+<MudButton Href="/carrito" Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Class="mb-3"
+           StartIcon="@Icons.Material.Filled.ShoppingCart">
+    Ver carrito (@Carrito.CantidadTotal) · @Formato.Dinero(Carrito.Total)
+</MudButton>
+
+<MudTextField @bind-Value="filtro" Immediate="true" Variant="Variant.Outlined" Class="mb-3"
+              Placeholder="Buscar producto o categoría..."
+              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+}
+else if (productos is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (ProductosFiltrados.Count == 0)
+{
+    <MudText>No hay productos para mostrar.</MudText>
+}
+else
+{
+    @* xs="6" = dos tarjetas por fila en el celular *@
+    <MudGrid Spacing="2">
+        @foreach (var p in ProductosFiltrados)
+        {
+            var puedePedirse = CarritoService.PuedePedirse(p);
+
+            <MudItem xs="6">
+                <MudCard Style="@(puedePedirse ? "" : "opacity:0.5;")">
+                    @if (!string.IsNullOrEmpty(p.ImagenUrl))
+                    {
+                        <MudCardMedia Image="@Formato.Imagen(Http.BaseAddress, p.ImagenUrl)" Height="140" />
+                    }
+                    <MudCardContent Class="pa-2">
+                        <MudText Typo="Typo.subtitle2">@p.Nombre</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@p.CategoriaNombre</MudText>
+                        @if (!string.IsNullOrWhiteSpace(p.Descripcion))
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">@p.Descripcion</MudText>
+                        }
+                        <MudText Typo="Typo.subtitle1"><b>@Formato.Dinero(p.Precio)</b></MudText>
+                        @if (p.Stock == 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">Agotado</MudChip>
+                        }
+                        else if (!p.Disponible)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">No disponible</MudChip>
+                        }
+                    </MudCardContent>
+                    <MudCardActions Class="pa-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" FullWidth="true"
+                                   Disabled="@(!puedePedirse)"
+                                   OnClick="() => Agregar(p)">
+                            Agregar
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<ProductoDTO>? productos;
+    private string filtro = string.Empty;
+    private string? error;
+
+    // Solo se muestran los productos activos (los dados de baja no aparecen) y, de esos, los que coinciden con la búsqueda
+    private List<ProductoDTO> ProductosFiltrados
+    {
+        get
+        {
+            var lista = (productos ?? new List<ProductoDTO>()).Where(p => p.Activo);
+            if (string.IsNullOrWhiteSpace(filtro)) return lista.ToList();
+
+            var texto = filtro.Trim().ToLower();
+            return lista.Where(p => p.Nombre.ToLower().Contains(texto)
+                                 || (p.CategoriaNombre ?? "").ToLower().Contains(texto)).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            productos = await Http.GetFromJsonAsync<List<ProductoDTO>>("api/Producto?pagina=1&tamanoPagina=1000");
+        }
+        catch (Exception ex)
+        {
+            error = $"No se pudo cargar el menú: {ex.Message}";
+        }
+    }
+
+    private async Task Agregar(ProductoDTO producto)
+    {
+        var estado = await AuthStateProvider.GetAuthenticationStateAsync();
+
+        if (estado.User.Identity?.IsAuthenticated != true)
+        {
+            var respuesta = await Dialogs.ShowMessageBoxAsync(
+                "Necesitás una cuenta",
+                "Para agregar productos al carrito tenés que iniciar sesión o crear una cuenta.",
+                yesText: "Iniciar sesión", noText: "Crear cuenta", cancelText: "Seguir mirando");
+
+            if (respuesta == true) Nav.NavigateTo("/Login");
+            else if (respuesta == false) Nav.NavigateTo("/registro");
+            return;
+        }
+
+        if (!estado.User.IsInRole("Cliente"))
+        {
+            Snackbar.Add("Solo los clientes pueden hacer pedidos. Entrá con una cuenta de cliente.", Severity.Warning);
+            return;
+        }
+
+        Carrito.Agregar(producto);
+        Snackbar.Add($"{producto.Nombre} agregado al carrito", Severity.Success);
+    }
+}

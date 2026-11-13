@@ -1,0 +1,51 @@
+﻿@page "/carrito"
+@using Pizzeria.Cliente.Movil.Servicios
+@inject CarritoService CarritoService
+@inject HttpClient Http
+
+<MudText Typo="Typo.h5" Class="mb-3">Mi carrito</MudText>
+
+@if (CarritoService.Items.Count == 0)
+{
+    <MudText Class="mb-3">Tu carrito está vacío.</MudText>
+    <MudButton Href="/catalogo" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">Ir al catálogo</MudButton>
+}
+else
+{
+    @foreach (var item in CarritoService.Items)
+    {
+        <MudPaper Class="pa-3 mb-2">
+            <div class="d-flex align-center">
+                @if (!string.IsNullOrEmpty(item.Producto.ImagenUrl))
+                {
+                    <MudImage Src="@Formato.Imagen(Http.BaseAddress, item.Producto.ImagenUrl)" Alt="@item.Producto.Nombre"
+                              Width="56" Height="56" ObjectFit="ObjectFit.Cover" Class="mr-3 rounded" />
+                }
+                <div class="flex-grow-1">
+                    <MudText Typo="Typo.subtitle2">@item.Producto.Nombre</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Formato.Dinero(item.Producto.Precio) c/u</MudText>
+                </div>
+                <MudText Typo="Typo.subtitle1"><b>@Formato.Dinero(item.Subtotal)</b></MudText>
+            </div>
+
+            <div class="d-flex align-center justify-space-between mt-2">
+                <div class="d-flex align-center">
+                    <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Variant="Variant.Outlined"
+                                   OnClick="() => CarritoService.Disminuir(item.Producto.Id)" />
+                    <MudText Class="mx-3">@item.Cantidad</MudText>
+                    @* No se puede pasar del stock disponible *@
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Variant="Variant.Outlined"
+                                   Disabled="@(item.Cantidad >= item.Producto.Stock)"
+                                   OnClick="() => CarritoService.Aumentar(item.Producto.Id)" />
+                </div>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               OnClick="() => CarritoService.Quitar(item.Producto.Id)" />
+            </div>
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.h6" Class="my-3">Total: @Formato.Dinero(CarritoService.Total)</MudText>
+
+    <MudButton Href="/pago" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mb-2">Continuar al pago</MudButton>
+    <MudButton Href="/catalogo" Variant="Variant.Outlined" FullWidth="true">Seguir comprando</MudButton>
+}

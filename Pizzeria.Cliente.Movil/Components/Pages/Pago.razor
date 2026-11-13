@@ -1,0 +1,183 @@
+﻿@page "/pago"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@using Pizzeria.Cliente.Movil.DTOs
+@using Pizzeria.Cliente.Movil.Servicios
+@attribute [Authorize(Roles = "Cliente")]
+@inject HttpClient Http
+@inject CarritoService Carrito
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Confirmar pedido</MudText>
+
+@if (Carrito.Items.Count == 0)
+{
+    <MudText Class="mb-3">Tu carrito está vacío.</MudText>
+    <MudButton Href="/catalogo" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">Ir al menú</MudButton>
+}
+else
+{
+    @* ---- Resumen ---- *@
+    <MudPaper Class="pa-3 mb-3">
+        @foreach (var item in Carrito.Items)
+        {
+            <div class="d-flex justify-space-between mb-1">
+                <span>@item.Cantidad × @item.Producto.Nombre</span>
+                <span>@Formato.Dinero(item.Subtotal)</span>
+            </div>
+        }
+        <MudDivider Class="my-2" />
+        <div class="d-flex justify-space-between"><b>Total</b><b>@Formato.Dinero(Carrito.Total)</b></div>
+    </MudPaper>
+
+    @* ---- Entrega ---- *@
+    <MudText Typo="Typo.subtitle1" Class="mb-1"><b>¿Cómo lo recibís?</b></MudText>
+    <MudRadioGroup T="int" @bind-Value="tipoEntrega" Class="mb-2">
+        <MudRadio T="int" Value="1">Retiro en el local</MudRadio>
+        <MudRadio T="int" Value="2">Envío a domicilio</MudRadio>
+    </MudRadioGroup>
+
+    @if (tipoEntrega == 2)
+    {
+        <MudPaper Class="pa-3 mb-3">
+            @if (direcciones.Count > 0)
+            {
+                <MudRadioGroup T="int" @bind-Value="direccionId">
+                    @foreach (var d in direcciones)
+                    {
+                        <MudRadio T="int" Value="@d.Id">@d.Texto</MudRadio>
+                    }
+                    <MudRadio T="int" Value="0">Usar otra dirección</MudRadio>
+                </MudRadioGroup>
+            }
+
+            @if (direccionId == 0)
+            {
+                <MudTextField @bind-Value="nueva.Calle" Label="Calle" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+                <MudTextField @bind-Value="nueva.Altura" Label="Altura" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+                <MudTextField @bind-Value="nueva.PisoDepto" Label="Piso / Depto (opcional)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+                <MudTextField @bind-Value="nueva.Aclaraciones" Label="Aclaraciones (opcional)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+            }
+        </MudPaper>
+    }
+
+    @* ---- Forma de pago ---- *@
+    <MudText Typo="Typo.subtitle1" Class="mb-1"><b>Forma de pago</b></MudText>
+    <MudRadioGroup T="int" @bind-Value="metodoPagoId" Class="mb-2">
+        <MudRadio T="int" Value="1">Efectivo (al recibir o retirar)</MudRadio>
+        <MudRadio T="int" Value="2">Tarjeta</MudRadio>
+        <MudRadio T="int" Value="3">Mercado Pago</MudRadio>
+    </MudRadioGroup>
+
+    @if (metodoPagoId == 2)
+    {
+        <MudPaper Class="pa-3 mb-3">
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">Pago simulado: no se guarda ningún dato de la tarjeta.</MudAlert>
+            <MudTextField @bind-Value="tarjetaNumero" Label="Número de tarjeta" InputType="InputType.Telephone" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <div class="d-flex mt-2" style="gap:8px">
+                <MudTextField @bind-Value="tarjetaVence" Label="Vence (MM/AA)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField @bind-Value="tarjetaCvv" Label="CVV" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </div>
+        </MudPaper>
+    }
+    else if (metodoPagoId == 3)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">Pago simulado con Mercado Pago: se acredita al confirmar el pedido.</MudAlert>
+    }
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mb-2"
+               Disabled="@enviando" OnClick="Confirmar">
+        @(enviando ? "Enviando pedido..." : $"Confirmar pedido · {Formato.Dinero(Carrito.Total)}")
+    </MudButton>
+    <MudButton Href="/carrito" Variant="Variant.Outlined" FullWidth="true">Volver al carrito</MudButton>
+}
+
+@code {
+    private int tipoEntrega = 1;                 // 1 Retiro, 2 Envío
+    private int metodoPagoId = 1;                // 1 Efectivo, 2 Tarjeta, 3 Mercado Pago
+    private int direccionId;                     // 0 = dirección nueva
+    private List<DireccionDTO> direcciones = new();
+    private DireccionDTO nueva = new();
+    private string tarjetaNumero = "", tarjetaVence = "", tarjetaCvv = "";
+    private string? error;
+    private bool enviando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            direcciones = await Http.GetFromJsonAsync<List<DireccionDTO>>("api/Pedido/mis-direcciones") ?? new();
+            if (direcciones.Count > 0) direccionId = direcciones[0].Id;
+        }
+        catch
+        {
+            // Si falla, igual puede cargar una dirección nueva
+        }
+    }
+
+    private async Task Confirmar()
+    {
+        error = null;
+
+        if (tipoEntrega == 2 && direccionId == 0 &&
+            (string.IsNullOrWhiteSpace(nueva.Calle) || string.IsNullOrWhiteSpace(nueva.Altura)))
+        {
+            error = "Completá calle y altura para el envío.";
+            return;
+        }
+
+        if (metodoPagoId == 2 &&
+            (string.IsNullOrWhiteSpace(tarjetaNumero) || string.IsNullOrWhiteSpace(tarjetaVence) || string.IsNullOrWhiteSpace(tarjetaCvv)))
+        {
+            error = "Completá los datos de la tarjeta.";
+            return;
+        }
+
+        var pedido = new CrearPedidoDTO
+        {
+            TipoEntrega = tipoEntrega,
+            MetodoPagoId = metodoPagoId,
+            Detalles = Carrito.Items
+                .Select(i => new CrearPedidoDetalleDTO { ProductoId = i.Producto.Id, Cantidad = i.Cantidad })
+                .ToList()
+        };
+
+        if (tipoEntrega == 2)
+        {
+            if (direccionId != 0) pedido.DireccionId = direccionId;
+            else pedido.Direccion = nueva;
+        }
+
+        enviando = true;
+        try
+        {
+            var respuesta = await Http.PostAsJsonAsync("api/Pedido", pedido);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                var creado = await respuesta.Content.ReadFromJsonAsync<PedidoCreado>();
+                Carrito.Vaciar();
+                Nav.NavigateTo($"/pedido/{creado!.Id}");
+            }
+            else
+            {
+                error = await respuesta.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"No se pudo enviar el pedido: {ex.Message}";
+        }
+        finally
+        {
+            enviando = false;
+        }
+    }
+
+    private class PedidoCreado { public int Id { get; set; } }
+}

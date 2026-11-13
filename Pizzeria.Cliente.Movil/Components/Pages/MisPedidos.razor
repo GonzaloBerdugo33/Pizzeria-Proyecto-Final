@@ -1,0 +1,64 @@
+﻿@page "/mis-pedidos"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@using Pizzeria.Cliente.Movil.DTOs
+@using Pizzeria.Cliente.Movil.Servicios
+@attribute [Authorize(Roles = "Cliente")]
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Mis pedidos</MudText>
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error">@error</MudAlert>
+}
+else if (pedidos is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (pedidos.Count == 0)
+{
+    <MudText Class="mb-3">Todavía no hiciste ningún pedido.</MudText>
+    <MudButton Href="/catalogo" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">Ir al menú</MudButton>
+}
+else
+{
+    @foreach (var p in pedidos.OrderByDescending(p => p.Fecha))
+    {
+        <MudPaper Class="pa-3 mb-3" Style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/pedido/{p.Id}"))">
+            <div class="d-flex justify-space-between align-center">
+                <b>Pedido N° @p.Id</b>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(p.EstadoId == 5 ? Color.Success : p.EstadoId == 6 ? Color.Error : Color.Warning)">@p.Estado</MudChip>
+            </div>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@Formato.Fecha(p.Fecha) · @p.TipoEntregaTexto</MudText>
+            <MudDivider Class="my-2" />
+            @foreach (var d in p.Detalles)
+            {
+                <div>@d.Cantidad × @d.NombreProducto</div>
+            }
+            <div class="d-flex justify-space-between mt-2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@p.MetodoPago</MudText>
+                <b>@Formato.Dinero(p.Total)</b>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<PedidoDTO>? pedidos;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            pedidos = await Http.GetFromJsonAsync<List<PedidoDTO>>("api/Pedido/mis-pedidos");
+        }
+        catch (Exception ex)
+        {
+            error = $"No se pudieron cargar tus pedidos: {ex.Message}";
+        }
+    }
+}
