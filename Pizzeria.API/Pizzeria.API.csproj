@@ -31,7 +31,6 @@
     <Folder Include="Middleware\" />
     <Folder Include="Servicios\" />
     <Folder Include="Repositorios\" />
-    <Folder Include="wwwroot\uploads\" />
   </ItemGroup>
 
 </Project>
