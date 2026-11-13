@@ -3,17 +3,21 @@
 @inject IAuthService AuthService
 @inject NavigationManager Nav
 
-<MudThemeProvider Theme="_tema" />
+<MudThemeProvider Theme="_tema" IsDarkMode="true" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="2">
-        <MudText Typo="Typo.h6">Pizzería · Caja</MudText>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6" Style="font-family:Poppins,sans-serif;font-weight:700">🍕 Pizzería · Caja</MudText>
 
-        <AuthorizeView Roles="Cajero,Administrador">
+        <AuthorizeView Roles="Cajero">
             <MudButton Href="/" Color="Color.Inherit" Class="ml-4">Caja</MudButton>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Administrador">
+            <MudButton Href="/" Color="Color.Inherit" Class="ml-4">Inicio</MudButton>
         </AuthorizeView>
 
         <AuthorizeView Roles="Administrador">
@@ -33,20 +37,38 @@
         </AuthorizeView>
     </MudAppBar>
 
-    <MudMainContent Class="pa-4">
-        @Body
+    <MudMainContent>
+        @* El contenedor centra el contenido y le da aire arriba, abajo y a los costados *@
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-8">
+            @Body
+        </MudContainer>
     </MudMainContent>
 </MudLayout>
 
 @code {
     private readonly MudTheme _tema = new()
     {
-        PaletteLight = new PaletteLight
+        PaletteDark = new PaletteDark
         {
-            Primary = "#0369a1",
-            Secondary = "#0f172a",
-            AppbarBackground = "#0f172a"
-        }
+            Primary = "#FF5722",           // naranja pepperoni: botones principales
+            Secondary = "#FFC107",         // amarillo queso: precios y detalles
+            Background = "#0D0D0D",        // fondo de la web
+            Surface = "#161616",           // tarjetas, menús y diálogos
+            TextPrimary = "#FFFFFF",
+            TextSecondary = "#9E9E9E",
+            AppbarBackground = "#121212"
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = new[] { "Inter", "sans-serif" } },
+            H1 = new H1Typography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "800" },
+            H2 = new H2Typography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "700" },
+            H3 = new H3Typography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "600" },
+            H5 = new H5Typography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "600" },
+            H6 = new H6Typography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "600" },
+            Button = new ButtonTypography { FontFamily = new[] { "Poppins", "sans-serif" }, FontWeight = "600", TextTransform = "none" }
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "12px" }
     };
 
     // Muestra el email si el token lo trae; si no, el rol

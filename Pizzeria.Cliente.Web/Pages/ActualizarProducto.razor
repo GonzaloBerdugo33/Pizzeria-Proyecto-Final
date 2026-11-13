@@ -1,6 +1,7 @@
 ﻿@page "/Productos/Actualizar/{Id:int}"
 @using Microsoft.AspNetCore.Authorization
 @using Pizzeria.Cliente.Web.DTOs
+@using System.Net.Http.Headers
 @attribute [Authorize(Roles = "Administrador")]
 @inject HttpClient Http
 @inject NavigationManager Navigation
@@ -42,6 +43,25 @@ else
         }
     </MudSelect>
 
+    <div class="mb-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-1">Imagen del producto (PNG, JPG - máx. 2 MB)</MudText>
+
+        @if (!string.IsNullOrEmpty(imagenActual))
+        {
+            <img src="@($"{Http.BaseAddress}{imagenActual.TrimStart('/')}")" alt="Imagen actual"
+                 style="width:120px;height:120px;object-fit:cover" class="rounded mb-2 d-block" />
+        }
+
+       <MudButton HtmlTag="label" for="imagenInput" Variant="Variant.Outlined" Color="Color.Primary"
+            StartIcon="@Icons.Material.Filled.CloudUpload">Elegir imagen</MudButton>
+        <InputFile id="imagenInput" OnChange="CargarArchivo" accept=".png,.jpg,.jpeg" hidden />
+
+        @if (archivoSeleccionado != null)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Success" Class="mt-1">Nueva imagen: @archivoSeleccionado.Name</MudText>
+        }
+    </div>
+
     <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@guardando" OnClick="GuardarCambios">
         @(guardando ? "Guardando..." : "Guardar Cambios")
     </MudButton>
@@ -57,13 +77,28 @@ else
     private List<ProveedorSelectDTO>? proveedores;
     private bool cargando = true;
     private bool guardando = false;
+    private const long MaxImagen = 2 * 1024 * 1024;
+    private IBrowserFile? archivoSeleccionado;
+    private string? imagenActual;
+
+    private void CargarArchivo(InputFileChangeEventArgs e)
+    {
+        if (e.File.Size > MaxImagen)
+        {
+            Snackbar.Add("La imagen no puede superar los 2 MB.", Severity.Warning);
+            archivoSeleccionado = null;
+            return;
+        }
+
+        archivoSeleccionado = e.File;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             categorias = await Http.GetFromJsonAsync<List<CategoriaProductoDTO>>("api/CategoriaProducto");
-            proveedores = await Http.GetFromJsonAsync<List<ProveedorSelectDTO>>("api/Proveedor/Todos");
+            proveedores = await Http.GetFromJsonAsync<List<ProveedorSelectDTO>>("api/Proveedor?pagina=1&tamanoPagina=1000");
 
             var actual = await Http.GetFromJsonAsync<ProductoDTO>($"api/Producto/{Id}");
             if (actual != null)
@@ -129,8 +164,31 @@ else
                 return;
             }
 
+            if (archivoSeleccionado != null)
+            {
+                using var content = new MultipartFormDataContent();
+
+                var stream = archivoSeleccionado.OpenReadStream(MaxImagen);
+                var archivoContent = new StreamContent(stream);
+                var tipo = string.IsNullOrEmpty(archivoSeleccionado.ContentType)
+                    ? "application/octet-stream"
+                    : archivoSeleccionado.ContentType;
+                archivoContent.Headers.ContentType = new MediaTypeHeaderValue(tipo);
+
+                content.Add(archivoContent, "archivo", archivoSeleccionado.Name);
+
+                var imgResponse = await Http.PostAsync($"api/Producto/{Id}/imagen", content);
+
+                if (!imgResponse.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Los datos se guardaron, pero no se pudo subir la imagen.", Severity.Warning);
+                    Navigation.NavigateTo("/Productos-grid");
+                    return;
+                }
+            }
+
             Snackbar.Add("Producto actualizado con éxito", Severity.Success);
-            Navigation.NavigateTo("/Productos-grid");
+            Navigation.NavigateTo("/Productos");
         }
         catch (Exception ex)
         {
@@ -144,6 +202,6 @@ else
 
     private void Cancelar()
     {
-        Navigation.NavigateTo("/Productos-grid");
+        Navigation.NavigateTo("/Productos");
     }
 }

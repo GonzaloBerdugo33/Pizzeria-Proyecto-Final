@@ -40,9 +40,11 @@ else if (!Visibles.Any())
 }
 else
 {
+    <div style="@(Ancho ? "display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px" : "")">
     @foreach (var p in Visibles)
     {
-        <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudPaper Class="@(Ancho ? "pa-3" : "pa-3 mb-3")" Elevation="1"
+                  Style="@($"border-left:4px solid {ColorBorde(p.EstadoId)}")">
             <div class="d-flex justify-space-between align-center">
                 <MudText Typo="Typo.subtitle1"><b>Pedido N° @p.Id</b></MudText>
                 <MudChip T="string" Size="Size.Small" Color="@ColorEstado(p.EstadoId)">@p.Estado</MudChip>
@@ -103,9 +105,12 @@ else
             </AuthorizeView>
         </MudPaper>
     }
+    </div>
 }
 
 @code {
+    
+    [Parameter] public bool Ancho { get; set; }
     private List<PedidoDTO>? pedidos;
     private string? error;
     private int filtro;                                   // 0 = todos
@@ -117,6 +122,17 @@ else
     private readonly (int Id, string Nombre)[] estadosFiltro =
     {
         (1, "Recibido"), (2, "En horno"), (3, "En camino"), (4, "Listo")
+    };
+
+     private static string ColorBorde(int estadoId) => estadoId switch
+    {
+        1 => "#29B6F6",   // Recibido
+        2 => "#FF5722",   // En horno
+        3 => "#FFC107",   // En camino
+        4 => "#26C6DA",   // Listo para retirar
+        5 => "#66BB6A",   // Entregado
+        6 => "#EF5350",   // Cancelado
+        _ => "#9E9E9E"
     };
 
     private List<PedidoDTO> Lista => pedidos ?? new();

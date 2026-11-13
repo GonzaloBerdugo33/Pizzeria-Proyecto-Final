@@ -2,6 +2,9 @@
     <Router AppAssembly="@typeof(Program).Assembly">
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+                <Authorizing>
+                    <MudText Class="ma-4">Cargando sesión...</MudText>
+                </Authorizing>
                 <NotAuthorized>
                     @if (context.User.Identity?.IsAuthenticated == true)
                     {
@@ -11,7 +14,7 @@
                     }
                     else
                     {
-                        <RedirigirALogin />
+                        <Pizzeria.Cliente.Web.Pages.Login />
                     }
                 </NotAuthorized>
             </AuthorizeRouteView>

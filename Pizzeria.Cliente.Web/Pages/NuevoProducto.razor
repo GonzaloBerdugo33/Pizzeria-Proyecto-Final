@@ -37,11 +37,15 @@
 <!-- Input para la Imagen -->
 <div class="mb-4">
     <MudText Typo="Typo.subtitle1" Class="mb-1">Imagen del Producto (PNG, JPG - máx. 2 MB)</MudText>
-    <InputFile OnChange="CargarArchivo" accept=".png,.jpg,.jpeg" />
+    <MudButton HtmlTag="label" for="imagenInput" Variant="Variant.Outlined" Color="Color.Primary"
+            StartIcon="@Icons.Material.Filled.CloudUpload">Elegir imagen</MudButton>
+    <InputFile id="imagenInput" OnChange="CargarArchivo" accept=".png,.jpg,.jpeg" hidden />
+    
     @if (archivoSeleccionado != null)
     {
         <MudText Typo="Typo.body2" Color="Color.Success" Class="mt-1">Archivo seleccionado: @archivoSeleccionado.Name</MudText>
     }
+
 </div>
 
 <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@guardando" OnClick="GuardarProducto">
